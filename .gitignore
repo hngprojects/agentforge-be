@@ -17,6 +17,10 @@ wheels/
 .vscode/
 .DS_Store
 
+# Claude Code
+CLAUDE.md
+.claude/
+
 # Test / coverage
 .pytest_cache/
 .coverage
