@@ -45,7 +45,6 @@ class User(BaseModel):
         default=UserPlan.FREE,
         server_default=UserPlan.FREE,
     )
-    github_access_token: Mapped[str | None] = mapped_column(Text)
     github_username: Mapped[str | None] = mapped_column(String(100))
     google_subject: Mapped[str | None] = mapped_column(
         String(255),

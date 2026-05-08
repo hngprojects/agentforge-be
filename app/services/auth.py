@@ -123,6 +123,49 @@ async def register_user(
     return user
 
 
+async def get_or_create_github_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    display_name: str | None,
+    avatar_url: str | None,
+    github_username: str | None,
+) -> User:
+    email = email.lower()
+    user = await get_user_by_email(db, email)
+    if user:
+        if user.provider != UserProvider.GITHUB:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "An account with this email already exists. "
+                    "Sign in with the existing provider and link GitHub "
+                    "from account settings."
+                ),
+            )
+        user.email_verified = True
+        if github_username:
+            user.github_username = github_username
+        if not user.avatar_url and avatar_url:
+            user.avatar_url = avatar_url
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    user = User(
+        email=email,
+        display_name=display_name,
+        avatar_url=avatar_url,
+        provider=UserProvider.GITHUB,
+        email_verified=True,
+        github_username=github_username,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def login_user(
     db: AsyncSession,
     email: str,
@@ -145,16 +188,24 @@ async def login_user(
             detail="Invalid email or password",
         )
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled",
-        )
-
     if not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Please verify your email before logging in",
+        )
+
+    return await issue_auth_tokens(db, user, request)
+
+
+async def issue_auth_tokens(
+    db: AsyncSession,
+    user: User,
+    request: Request,
+) -> tuple[str, str]:
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled",
         )
 
     access_token = create_access_token(str(user.id))
@@ -195,24 +246,16 @@ async def rotate_refresh_token(
 
     _validate_refresh_record(record)
 
-    record.revoked = True  # type: ignore
+    record.revoked = True  # type: ignore[union-attr]
 
     user = await get_user_by_id(db, record.user_id)  # type: ignore[union-attr]
-    if user is None or not user.is_active:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
 
-    access_token = create_access_token(str(user.id))
-    user_agent, ip_address = _refresh_token_context(request)
-    raw_refresh, _ = await _create_refresh_token(
-        db,
-        user,
-        user_agent=user_agent,
-        ip_address=ip_address,
-    )
-    await db.commit()
+    access_token, raw_refresh = await issue_auth_tokens(db, user, request)
 
     return access_token, raw_refresh
 
