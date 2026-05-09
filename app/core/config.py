@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # Frontend (used in email links)
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # SendGrid (leave empty to fall back to stdout logging in dev)
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = "noreply@example.com"
+
+    # Password reset
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
+
 
 @lru_cache
 def get_settings() -> Settings:

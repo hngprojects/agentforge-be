@@ -1,5 +1,7 @@
+import hashlib
+import secrets
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address as parse_ip_address
 
 from fastapi import HTTPException, Request, status
@@ -16,6 +18,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.enums import UserProvider
+from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
@@ -235,3 +238,56 @@ def _bounded_header(value: str | None) -> str | None:
     if not value:
         return None
     return value[:_MAX_USER_AGENT_LENGTH]
+
+
+async def create_password_reset_token(db: AsyncSession, email: str) -> str | None:
+    result = await db.execute(select(User).where(User.email == email.lower()))
+    user = result.scalar_one_or_none()
+
+    if user is None or user.provider != UserProvider.EMAIL:
+        return None
+
+    raw = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw.encode()).hexdigest()
+    expires_at = datetime.now(UTC) + timedelta(
+        minutes=settings.PASSWORD_RESET_TOKEN_TTL_MINUTES
+    )
+    record = PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+    )
+    db.add(record)
+    await db.commit()
+    return raw
+
+
+async def reset_password(db: AsyncSession, raw_token: str, new_password: str) -> bool:
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )
+    token = result.scalar_one_or_none()
+
+    if token is None:
+        return False
+    if token.used_at is not None:
+        return False
+
+    expires_at = token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    else:
+        expires_at = expires_at.astimezone(UTC)
+    if expires_at < datetime.now(UTC):
+        return False
+
+    user = await get_user_by_id(db, token.user_id)
+    if user is None:
+        return False
+
+    user.password_hash = hash_password(new_password)
+    token.used_at = datetime.now(UTC)
+    await db.commit()
+    return True

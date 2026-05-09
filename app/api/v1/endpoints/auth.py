@@ -4,20 +4,24 @@ from app.api.deps import CurrentUser, DBSession
 from app.core.config import settings
 from app.core.security import create_verification_token, decode_token
 from app.schemas.auth import (
+    ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenResponse,
     UserResponse,
 )
 from app.services.auth import (
+    create_password_reset_token,
     get_user_by_email,
     login_user,
     logout_user,
     register_user,
+    reset_password,
     rotate_refresh_token,
 )
-from app.services.email import send_verification_email
+from app.services.email import send_password_reset_email, send_verification_email
 
 router = APIRouter()
 _REFRESH_TOKEN_COOKIE = "refresh_token"
@@ -194,3 +198,43 @@ async def verify_email(
     user.email_verified = True
     await db.commit()
     return MessageResponse(message="Email verified successfully")
+
+
+# ---------------------------------------------------------------------------
+# Password reset
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    summary="Request a password reset link",
+)
+async def forgot_password(
+    body: ForgotPasswordRequest, db: DBSession
+) -> MessageResponse:
+    raw_token = await create_password_reset_token(db, body.email)
+    if raw_token is not None:
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+        try:
+            await send_password_reset_email(body.email, reset_url)
+        except Exception:
+            pass
+    return MessageResponse(message="If this email exists, a reset link has been sent.")
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    summary="Reset password using a valid reset token",
+)
+async def reset_password_endpoint(
+    body: ResetPasswordRequest, db: DBSession
+) -> MessageResponse:
+    success = await reset_password(db, body.token, body.new_password)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+    return MessageResponse(message="Password updated. Please sign in.")
