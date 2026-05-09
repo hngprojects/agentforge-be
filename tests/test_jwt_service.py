@@ -36,8 +36,12 @@ def test_issue_refresh_token_has_longer_expiry_than_access_token():
     access = issue_access_token({"sub": "user-123"})
     refresh = issue_refresh_token({"sub": "user-123"})
 
-    access_claims = jwt.decode(access, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-    refresh_claims = jwt.decode(refresh, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    access_claims = jwt.decode(
+        access, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+    )
+    refresh_claims = jwt.decode(
+        refresh, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+    )
 
     assert refresh_claims["exp"] > access_claims["exp"]
 
@@ -55,6 +59,7 @@ def test_decode_token_raises_401_for_expired_token():
     expired_claims = {
         "sub": "user-99",
         "jti": "some-jti",
+        "type": "access",
         "exp": datetime.now(timezone.utc) - timedelta(seconds=1),
     }
     expired_token = jwt.encode(
@@ -89,3 +94,19 @@ def test_refresh_token_returns_new_valid_access_token():
     assert claims["sub"] == "user-77"
     assert "jti" in claims
     assert new_access != original_refresh
+
+
+def test_access_token_rejected_as_refresh_token():
+    access = issue_access_token({"sub": "user-88"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        refresh_token(access)
+    assert exc_info.value.status_code == 401
+
+
+def test_refresh_token_rejected_by_get_current_user():
+    refresh = issue_refresh_token({"sub": "user-99"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        decode_token(refresh, expected_type="access")
+    assert exc_info.value.status_code == 401
