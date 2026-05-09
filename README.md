@@ -90,6 +90,31 @@ Edit `.env` and set `DATABASE_URL`. The driver **must** be `postgresql+asyncpg`:
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/fastapi_starter
 ```
 
+Spin up a local Postgres instance with Docker. Copy and run this:
+
+```bash
+docker run -d \
+  --name agentforge-db \
+  -e POSTGRES_USER=agentforge \
+  -e POSTGRES_PASSWORD=agentforge \
+  -e POSTGRES_DB=agentforge \
+  -p 5432:5432 \
+  postgres:15
+```
+
+```bash
+docker stop agentforge-db
+docker start agentforge-db
+```
+
+To wipe it and start fresh:
+
+```bash
+docker rm -f agentforge-db
+```
+
+Your db url becomes: `DATABASE_URL=postgresql+asyncpg://agentforge:agentforge@localhost:5432/agentforge`
+
 ### 4. Create the database
 
 ```bash
@@ -236,6 +261,37 @@ Then add it to `.env.example`. `pydantic-settings` will fail loudly at startup i
 - **Endpoints return Pydantic models or dicts**, never raw ORM objects.
 - **Use `Annotated[..., Depends(...)]`** for dependencies (see `app/api/deps.py`).
 - **`async def` everything that touches I/O** (DB, HTTP, files). Sync `def` is fine for pure CPU work.
+
+---
+## Linting and Formatting
+
+We use Ruff for both linting and formatting. Rules are pinned in `ruff.toml`.
+
+Check formatting:
+
+```bash
+uv run ruff format --check .
+```
+
+Auto-fix formatting:
+
+```bash
+uv run ruff format .
+```
+
+Run lint:
+
+```bash
+uv run ruff check .
+```
+
+Auto-fix lint where possible:
+
+```bash
+uv run ruff check --fix .
+```
+
+CI runs format check and lint on every PR. Fix both locally before pushing.
 
 ---
 

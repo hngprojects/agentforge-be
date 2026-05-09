@@ -1,0 +1,15 @@
+line-length = 88
+target-version = "py313"
+
+[lint]
+select = [ "E", "F", "I", "B" ]
+ignore = []
+
+[lint.per-file-ignores]
+"alembic/*" = ["ALL"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+exclude = ["alembic/*"]

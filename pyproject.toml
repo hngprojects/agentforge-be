@@ -10,13 +10,18 @@ dependencies = [
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "pydantic-settings>=2.7.0",
+    "PyJWT>=2.9.0",
+    "bcrypt>=4.2.0",
+    "httpx>=0.28.0",
+    "pwdlib[argon2]>=0.3.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
-    "httpx>=0.28.0",
+    "ruff>=0.15.12",
+    "pytest-mock>=3.14.0",
 ]
 
 [tool.pytest.ini_options]
