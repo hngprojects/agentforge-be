@@ -236,7 +236,7 @@ async def forgot_password(
 ) -> MessageResponse:
     raw_token = await create_password_reset_token(db, body.email)
     if raw_token is not None:
-        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+        reset_url = f"{settings.FRONTEND_URL}/reset-password#{raw_token}"
         background_tasks.add_task(_deliver_reset_email, body.email, reset_url)
     return MessageResponse(message="If this email exists, a reset link has been sent.")
 
