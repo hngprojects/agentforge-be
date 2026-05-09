@@ -7,12 +7,14 @@ Tests for:
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from http.cookies import SimpleCookie
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import jwt
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 
 from app.core.config import settings
 from app.core.security import (
@@ -43,6 +45,15 @@ def _github_http_error() -> httpx.HTTPStatusError:
         request=request,
         response=response,
     )
+
+
+def _github_request_error() -> httpx.RequestError:
+    request = httpx.Request("POST", "https://github.com/login/oauth/access_token")
+    return httpx.ConnectTimeout("GitHub timed out", request=request)
+
+
+def _oauth_state_with_cookie(nonce: str = "oauth-nonce") -> tuple[str, str]:
+    return create_oauth_state_token(nonce), f"oauth_state_nonce={nonce}"
 
 
 def _make_user(
@@ -249,6 +260,30 @@ class TestEmailPasswordAuth:
         assert "secret@example.com" not in logged
         assert "token-value" not in logged
 
+    async def test_github_user_does_not_silently_link_password_account(self):
+        user = _make_user(email="octocat@github.com", provider=UserProvider.EMAIL)
+        user.password_hash = "existing-password-hash"
+        user.email_verified = False
+
+        with (
+            patch(
+                "app.services.auth.get_user_by_email",
+                new=AsyncMock(return_value=user),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await auth_service.get_or_create_github_user(
+                MagicMock(),
+                email=user.email,
+                display_name="Octo Cat",
+                avatar_url="https://example.com/avatar.png",
+                github_username="octocat",
+            )
+
+        assert exc_info.value.status_code == 409
+        assert user.email_verified is False
+        assert user.github_username is None
+
 
 class TestGoogleOAuth:
     async def test_google_start_sets_state_cookie_and_redirects(self, client):
@@ -401,7 +436,10 @@ class TestVerifyEmail:
 class TestGithubLogin:
     async def test_redirects_to_github(self, client):
         """With a configured client_id, should redirect to GitHub."""
-        with patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"):
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
+            patch.object(settings, "COOKIE_SECURE", True),
+        ):
             resp = await client.get("/api/v1/auth/github", follow_redirects=False)
 
         assert resp.status_code == 302
@@ -418,6 +456,12 @@ class TestGithubLogin:
 
         payload = decode_token(state_token)
         assert payload["purpose"] == "oauth_state"
+        cookies = SimpleCookie(resp.headers["set-cookie"])
+        nonce = cookies["oauth_state_nonce"].value
+        assert payload["nonce"] == nonce
+        assert cookies["oauth_state_nonce"]["httponly"]
+        assert cookies["oauth_state_nonce"]["secure"]
+        assert cookies["oauth_state_nonce"]["samesite"].lower() == "lax"
 
     async def test_returns_501_when_not_configured(self, client):
         with patch.object(settings, "GITHUB_CLIENT_ID", ""):
@@ -469,7 +513,7 @@ class TestGithubCallback:
         return mock_client
 
     async def test_happy_path_new_user(self, client):
-        state = create_oauth_state_token()
+        state, cookie = _oauth_state_with_cookie()
         mock_http = self._mock_httpx()
         new_user = _make_user(email="octocat@github.com", provider=UserProvider.GITHUB)
         new_user.id = uuid.uuid4()
@@ -477,7 +521,10 @@ class TestGithubCallback:
 
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(settings, "COOKIE_SECURE", True),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
             patch(
                 "app.api.v1.endpoints.auth.httpx.AsyncClient", return_value=mock_http
             ),
@@ -491,7 +538,8 @@ class TestGithubCallback:
             ) as issue_auth_tokens,
         ):
             resp = await client.get(
-                f"/api/v1/auth/github/callback?code=code123&state={state}"
+                f"/api/v1/auth/github/callback?code=code123&state={state}",
+                headers={"cookie": cookie},
             )
 
         assert resp.status_code == 200
@@ -514,17 +562,23 @@ class TestGithubCallback:
         issue_auth_tokens.assert_awaited_once()
 
     async def test_returns_501_when_callback_not_configured(self, client):
-        state = create_oauth_state_token()
-        with patch.object(settings, "GITHUB_CLIENT_SECRET", ""):
+        state, cookie = _oauth_state_with_cookie()
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", ""),
+            patch.object(settings, "GITHUB_CLIENT_SECRET", SecretStr("")),
+        ):
             resp = await client.get(
-                f"/api/v1/auth/github/callback?code=x&state={state}"
+                f"/api/v1/auth/github/callback?code=x&state={state}",
+                headers={"cookie": cookie},
             )
         assert resp.status_code == 501
 
     async def test_invalid_state(self, client):
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
         ):
             resp = await client.get(
                 "/api/v1/auth/github/callback?code=x&state=bad.state"
@@ -538,15 +592,30 @@ class TestGithubCallback:
         bad_state = create_access_token(str(fake_user.id))
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
         ):
             resp = await client.get(
                 f"/api/v1/auth/github/callback?code=x&state={bad_state}"
             )
         assert resp.status_code == 400
 
+    async def test_missing_oauth_nonce_cookie(self, client):
+        state = create_oauth_state_token("nonce")
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
+        ):
+            resp = await client.get(
+                f"/api/v1/auth/github/callback?code=x&state={state}"
+            )
+        assert resp.status_code == 400
+
     async def test_no_verified_primary_email(self, client):
-        state = create_oauth_state_token()
+        state, cookie = _oauth_state_with_cookie()
         mock_http = self._mock_httpx(
             emails=[
                 {
@@ -558,20 +627,23 @@ class TestGithubCallback:
         )
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
             patch(
                 "app.api.v1.endpoints.auth.httpx.AsyncClient",
                 return_value=mock_http,
             ),
         ):
             resp = await client.get(
-                f"/api/v1/auth/github/callback?code=code123&state={state}"
+                f"/api/v1/auth/github/callback?code=code123&state={state}",
+                headers={"cookie": cookie},
             )
         assert resp.status_code == 400
         assert "email" in resp.json()["detail"].lower()
 
     async def test_github_token_exchange_error(self, client):
-        state = create_oauth_state_token()
+        state, cookie = _oauth_state_with_cookie()
 
         token_response = MagicMock()
         token_response.raise_for_status = MagicMock()
@@ -587,50 +659,104 @@ class TestGithubCallback:
 
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
             patch(
                 "app.api.v1.endpoints.auth.httpx.AsyncClient",
                 return_value=mock_client,
             ),
         ):
             resp = await client.get(
-                f"/api/v1/auth/github/callback?code=bad&state={state}"
+                f"/api/v1/auth/github/callback?code=bad&state={state}",
+                headers={"cookie": cookie},
             )
         assert resp.status_code == 400
         assert "Code expired" in resp.json()["detail"]
 
     async def test_github_token_http_error(self, client):
-        state = create_oauth_state_token()
+        state, cookie = _oauth_state_with_cookie()
         mock_http = self._mock_httpx(token_error=_github_http_error())
 
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
             patch(
                 "app.api.v1.endpoints.auth.httpx.AsyncClient",
                 return_value=mock_http,
             ),
         ):
             resp = await client.get(
-                f"/api/v1/auth/github/callback?code=bad&state={state}"
+                f"/api/v1/auth/github/callback?code=bad&state={state}",
+                headers={"cookie": cookie},
+            )
+
+        assert resp.status_code == 502
+
+    async def test_github_request_error(self, client):
+        state, cookie = _oauth_state_with_cookie()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=_github_request_error())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.httpx.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
+            resp = await client.get(
+                f"/api/v1/auth/github/callback?code=bad&state={state}",
+                headers={"cookie": cookie},
             )
 
         assert resp.status_code == 502
 
     async def test_missing_access_token_from_github(self, client):
-        state = create_oauth_state_token()
+        state, cookie = _oauth_state_with_cookie()
         mock_http = self._mock_httpx(token_data={})
 
         with (
             patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
-            patch.object(settings, "GITHUB_CLIENT_SECRET", "test-client-secret"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
             patch(
                 "app.api.v1.endpoints.auth.httpx.AsyncClient",
                 return_value=mock_http,
             ),
         ):
             resp = await client.get(
-                f"/api/v1/auth/github/callback?code=bad&state={state}"
+                f"/api/v1/auth/github/callback?code=bad&state={state}",
+                headers={"cookie": cookie},
             )
 
         assert resp.status_code == 502
+
+    async def test_malformed_github_emails_payload(self, client):
+        state, cookie = _oauth_state_with_cookie()
+        mock_http = self._mock_httpx(emails={"email": "octocat@github.com"})
+
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", "test-client-id"),
+            patch.object(
+                settings, "GITHUB_CLIENT_SECRET", SecretStr("test-client-secret")
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.httpx.AsyncClient",
+                return_value=mock_http,
+            ),
+        ):
+            resp = await client.get(
+                f"/api/v1/auth/github/callback?code=code123&state={state}",
+                headers={"cookie": cookie},
+            )
+
+        assert resp.status_code == 400

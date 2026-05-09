@@ -255,7 +255,22 @@ async def rotate_refresh_token(
             detail="User not found or inactive",
         )
 
-    access_token, raw_refresh = await issue_auth_tokens(db, user, request)
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    access_token = create_access_token(str(user.id))
+    user_agent, ip_address = _refresh_token_context(request)
+    raw_refresh, _ = await _create_refresh_token(
+        db,
+        user,
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )
+    record.revoked = True  # type: ignore[union-attr]
+    await db.commit()
 
     return access_token, raw_refresh
 
