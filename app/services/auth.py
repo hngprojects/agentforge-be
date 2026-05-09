@@ -1,4 +1,3 @@
-import hashlib
 import uuid
 from datetime import UTC, datetime
 from ipaddress import ip_address as parse_ip_address
@@ -459,6 +458,7 @@ async def create_password_reset_token(db: AsyncSession, email: str) -> str | Non
 
 
 async def reset_password(db: AsyncSession, raw_token: str, new_password: str) -> bool:
+    # Phase 1: decode JWT structure only to extract user_id (no hash check yet).
     payload = decode_password_reset_jwt(raw_token)
     if payload is None:
         return False
@@ -469,13 +469,12 @@ async def reset_password(db: AsyncSession, raw_token: str, new_password: str) ->
         return False
 
     user = await get_user_by_id(db, user_id)
-    if user is None or user.provider != UserProvider.EMAIL or user.password_hash is None:
+    if user is None or user.provider != UserProvider.EMAIL or not user.password_hash:
         return False
 
-    # Token embeds a fingerprint of the password hash at issuance time.
-    # Any prior password change renders outstanding tokens invalid automatically.
-    expected_phash = hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]
-    if payload.get("phash") != expected_phash:
+    # Phase 2: full validation — confirm the stored hash still matches the token.
+    # Any password change rotates the hash, instantly invalidating prior tokens.
+    if decode_password_reset_jwt(raw_token, user.password_hash) is None:
         return False
 
     user.password_hash = hash_password(new_password)

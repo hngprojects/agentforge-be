@@ -4,7 +4,6 @@ Tests for:
   POST /api/v1/auth/reset-password
 """
 
-import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -266,13 +265,12 @@ class TestResetPasswordExpiredToken:
     async def test_service_returns_false_for_expired_jwt(self):
         user = _make_user()
         user.password_hash = hash_password("OldPass123")
-        phash = hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]
 
         expired_token = jwt.encode(
             {
                 "sub": str(user.id),
                 "purpose": "password_reset",
-                "phash": phash,
+                "password_hash": user.password_hash,
                 "iat": datetime.now(UTC) - timedelta(hours=2),
                 "exp": datetime.now(UTC) - timedelta(hours=1),
             },

@@ -92,17 +92,20 @@ def create_oauth_state_token() -> str:
 
 
 def create_password_reset_jwt(user_id: str, password_hash: str) -> str:
-    # phash is a short fingerprint of the current password hash so the token
-    # auto-invalidates the moment the password is changed by any means.
-    phash = hashlib.sha256(password_hash.encode()).hexdigest()[:16]
     return create_token(
-        {"sub": user_id, "purpose": "password_reset", "phash": phash},
+        {"sub": user_id, "purpose": "password_reset", "password_hash": password_hash},
         timedelta(minutes=settings.PASSWORD_RESET_TOKEN_TTL_MINUTES),
     )
 
 
-def decode_password_reset_jwt(token: str) -> dict[str, Any] | None:
-    """Return payload for a valid unexpired password-reset JWT, else None."""
+def decode_password_reset_jwt(
+    token: str, current_password_hash: str | None = None
+) -> dict[str, Any] | None:
+    """Return payload for a valid password-reset JWT, else None.
+
+    When current_password_hash is supplied, also verifies that the hash embedded
+    in the token matches — rejecting any token issued before a password change.
+    """
     try:
         payload = jwt.decode(
             token,
@@ -112,6 +115,11 @@ def decode_password_reset_jwt(token: str) -> dict[str, Any] | None:
             options={"require": ["exp"]},
         )
         if payload.get("purpose") != "password_reset":
+            return None
+        if (
+            current_password_hash is not None
+            and payload.get("password_hash") != current_password_hash
+        ):
             return None
         return payload
     except jwt.InvalidTokenError:
