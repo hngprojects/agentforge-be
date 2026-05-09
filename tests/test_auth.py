@@ -72,8 +72,11 @@ class TestEmailPasswordAuth:
 
         assert resp.status_code == 200
         assert resp.json() == {
-            "access_token": "access-token",
-            "token_type": "bearer",
+            "success": True,
+            "data": {
+                "access_token": "access-token",
+                "token_type": "bearer",
+            },
         }
         set_cookie = resp.headers["set-cookie"]
         assert "refresh_token=raw-refresh-token" in set_cookie
@@ -103,6 +106,7 @@ class TestEmailPasswordAuth:
             )
 
         assert resp.status_code == 201
+        assert "verify your address" in resp.json()["message"].lower()
         register_user.assert_awaited_once()
         send_email.assert_called_once()
         assert send_email.call_args.args[0] == user.email
@@ -120,8 +124,11 @@ class TestEmailPasswordAuth:
 
         assert resp.status_code == 200
         assert resp.json() == {
-            "access_token": "new-access-token",
-            "token_type": "bearer",
+            "success": True,
+            "data": {
+                "access_token": "new-access-token",
+                "token_type": "bearer",
+            },
         }
         assert "refresh_token=new-refresh-token" in resp.headers["set-cookie"]
         assert rotate_refresh_token.await_args.args[1] == "old-refresh-token"
@@ -142,6 +149,7 @@ class TestEmailPasswordAuth:
         assert "refresh_token=" in resp.headers["set-cookie"]
         assert "Max-Age=0" in resp.headers["set-cookie"]
         assert logout_user.await_args.args[1] == "raw-refresh-token"
+        assert resp.json()["message"] == "Logged out successfully"
 
     async def test_refresh_requires_refresh_cookie(self, client):
         resp = await client.post("/api/v1/auth/refresh")
@@ -291,7 +299,13 @@ class TestGoogleOAuth:
             )
 
         assert resp.status_code == 200
-        assert resp.json() == {"access_token": "access-token", "token_type": "bearer"}
+        assert resp.json() == {
+            "success": True,
+            "data": {
+                "access_token": "access-token",
+                "token_type": "bearer",
+            },
+        }
         set_cookies = resp.headers.get_list("set-cookie")
         assert any("refresh_token=refresh-token" in value for value in set_cookies)
         assert any(
