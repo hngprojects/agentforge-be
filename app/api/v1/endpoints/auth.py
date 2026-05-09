@@ -1,4 +1,15 @@
-from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response, status
+import logging
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 
 from app.api.deps import CurrentUser, DBSession
 from app.core.config import settings
@@ -24,6 +35,16 @@ from app.services.auth import (
 from app.services.email import send_password_reset_email, send_verification_email
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+async def _deliver_reset_email(email: str, reset_url: str) -> None:
+    try:
+        await send_password_reset_email(email, reset_url)
+    except Exception:
+        logger.exception("Background task: failed to deliver password reset email")
+
+
 _REFRESH_TOKEN_COOKIE = "refresh_token"
 _REFRESH_TOKEN_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
 _REFRESH_TOKEN_COOKIE_MAX_AGE = settings.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60
@@ -211,15 +232,12 @@ async def verify_email(
     summary="Request a password reset link",
 )
 async def forgot_password(
-    body: ForgotPasswordRequest, db: DBSession
+    body: ForgotPasswordRequest, db: DBSession, background_tasks: BackgroundTasks
 ) -> MessageResponse:
     raw_token = await create_password_reset_token(db, body.email)
     if raw_token is not None:
         reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
-        try:
-            await send_password_reset_email(body.email, reset_url)
-        except Exception:
-            pass
+        background_tasks.add_task(_deliver_reset_email, body.email, reset_url)
     return MessageResponse(message="If this email exists, a reset link has been sent.")
 
 

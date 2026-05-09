@@ -102,7 +102,8 @@ class TestForgotPasswordExistingEmail:
 
     async def test_service_creates_token_row_in_db(self):
         user = _make_user()
-        db = _db_with_results(user)
+        # 2 execute calls: SELECT user, UPDATE old tokens
+        db = _db_with_results(user, MagicMock())
 
         raw = await auth_service.create_password_reset_token(db, user.email)
 
@@ -113,6 +114,39 @@ class TestForgotPasswordExistingEmail:
         assert added.user_id == user.id
         assert len(added.token_hash) == 64
         db.commit.assert_awaited_once()
+
+    async def test_endpoint_sends_email_with_correct_url(self, client):
+        mock_send = AsyncMock()
+        with (
+            patch(
+                "app.api.v1.endpoints.auth.create_password_reset_token",
+                new=AsyncMock(return_value="raw-reset-token"),
+            ),
+            patch("app.api.v1.endpoints.auth.send_password_reset_email", new=mock_send),
+        ):
+            resp = await client.post(_FORGOT_EP, json={"email": "alice@example.com"})
+
+        assert resp.status_code == 200
+        mock_send.assert_awaited_once()
+        called_email, called_url = mock_send.call_args.args
+        assert called_email == "alice@example.com"
+        assert "raw-reset-token" in called_url
+
+    async def test_endpoint_returns_200_when_mailer_raises(self, client):
+        with (
+            patch(
+                "app.api.v1.endpoints.auth.create_password_reset_token",
+                new=AsyncMock(return_value="raw-reset-token"),
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.send_password_reset_email",
+                new=AsyncMock(side_effect=Exception("SMTP timeout")),
+            ),
+        ):
+            resp = await client.post(_FORGOT_EP, json={"email": "alice@example.com"})
+
+        assert resp.status_code == 200
+        assert "reset link has been sent" in resp.json()["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +211,8 @@ class TestResetPasswordValidToken:
         user.password_hash = hash_password(old_password)
 
         raw, token = _make_token(user)
-        db = _db_with_results(token, user)
+        # 3 execute calls: SELECT token FOR UPDATE, SELECT user, UPDATE refresh_tokens
+        db = _db_with_results(token, user, MagicMock())
 
         success = await auth_service.reset_password(db, raw, "NewPass456")
 

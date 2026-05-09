@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Frontend (used in email links)
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Deployment environment — gates dev-only behaviour (e.g. stdout token logging)
+    APP_ENV: str = "development"  # "development" | "staging" | "production"
+
     # SendGrid (leave empty to fall back to stdout logging in dev)
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = "noreply@example.com"

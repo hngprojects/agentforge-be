@@ -19,7 +19,7 @@ async def send_password_reset_email(email: str, reset_url: str) -> None:
     if settings.SENDGRID_API_KEY:
         try:
             async with httpx.AsyncClient() as client:
-                await client.post(
+                response = await client.post(
                     "https://api.sendgrid.com/v3/mail/send",
                     headers={
                         "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
@@ -38,7 +38,12 @@ async def send_password_reset_email(email: str, reset_url: str) -> None:
                     },
                     timeout=10,
                 )
+                response.raise_for_status()
         except Exception:
             logger.exception("Failed to send password reset email via SendGrid")
-    else:
+    elif settings.APP_ENV == "development":
         print(f"[DEV] Password reset link: {reset_url}")
+    else:
+        logger.error(
+            "SENDGRID_API_KEY is not configured; password reset email suppressed"
+        )

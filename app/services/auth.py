@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address as parse_ip_address
 
 from fastapi import HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -247,6 +247,16 @@ async def create_password_reset_token(db: AsyncSession, email: str) -> str | Non
     if user is None or user.provider != UserProvider.EMAIL:
         return None
 
+    # Invalidate any prior unused tokens so only one is ever valid at a time.
+    await db.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=datetime.now(UTC))
+    )
+
     raw = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     expires_at = datetime.now(UTC) + timedelta(
@@ -265,8 +275,11 @@ async def create_password_reset_token(db: AsyncSession, email: str) -> str | Non
 async def reset_password(db: AsyncSession, raw_token: str, new_password: str) -> bool:
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
+    # SELECT FOR UPDATE prevents two concurrent requests from both seeing used_at=None.
     result = await db.execute(
-        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == token_hash)
+        .with_for_update()
     )
     token = result.scalar_one_or_none()
 
@@ -289,5 +302,13 @@ async def reset_password(db: AsyncSession, raw_token: str, new_password: str) ->
 
     user.password_hash = hash_password(new_password)
     token.used_at = datetime.now(UTC)
+
+    # Revoke active sessions — stolen refresh tokens must not outlive a password reset.
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked == False)  # noqa: E712
+        .values(revoked=True)
+    )
+
     await db.commit()
     return True
