@@ -116,6 +116,8 @@ def decode_password_reset_jwt(
         )
         if payload.get("purpose") != "password_reset":
             return None
+        if not payload.get("sub") or not payload.get("password_hash"):
+            return None
         if (
             current_password_hash is not None
             and payload.get("password_hash") != current_password_hash

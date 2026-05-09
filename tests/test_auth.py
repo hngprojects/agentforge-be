@@ -97,7 +97,7 @@ class TestEmailPasswordAuth:
                 "/api/v1/auth/register",
                 json={
                     "email": user.email,
-                    "password": "correct horse battery staple",
+                    "password": "CorrectHorse1",
                     "display_name": "New User",
                 },
             )
