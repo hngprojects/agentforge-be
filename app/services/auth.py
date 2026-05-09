@@ -469,7 +469,7 @@ async def reset_password(db: AsyncSession, raw_token: str, new_password: str) ->
         return False
 
     user = await get_user_by_id(db, user_id)
-    if user is None or user.password_hash is None:
+    if user is None or user.provider != UserProvider.EMAIL or user.password_hash is None:
         return False
 
     # Token embeds a fingerprint of the password hash at issuance time.

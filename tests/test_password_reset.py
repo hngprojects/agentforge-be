@@ -115,7 +115,7 @@ class TestForgotPasswordExistingEmail:
         assert resp.status_code == 200
         mock_send.assert_called_once()
         _, reset_url = mock_send.call_args.args
-        assert "raw-jwt-token" in reset_url
+        assert reset_url.endswith("#raw-jwt-token")
 
 
 # ---------------------------------------------------------------------------
