@@ -89,3 +89,30 @@ def create_verification_token(email: str) -> str:
 def create_oauth_state_token() -> str:
     """Short-lived state token to prevent CSRF in OAuth flows."""
     return create_token({"purpose": "oauth_state"}, timedelta(minutes=10))
+
+
+def create_password_reset_jwt(user_id: str, password_hash: str) -> str:
+    # phash is a short fingerprint of the current password hash so the token
+    # auto-invalidates the moment the password is changed by any means.
+    phash = hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+    return create_token(
+        {"sub": user_id, "purpose": "password_reset", "phash": phash},
+        timedelta(minutes=settings.PASSWORD_RESET_TOKEN_TTL_MINUTES),
+    )
+
+
+def decode_password_reset_jwt(token: str) -> dict[str, Any] | None:
+    """Return payload for a valid unexpired password-reset JWT, else None."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            leeway=30,
+            options={"require": ["exp"]},
+        )
+        if payload.get("purpose") != "password_reset":
+            return None
+        return payload
+    except jwt.InvalidTokenError:
+        return None

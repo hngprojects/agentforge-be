@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     GOOGLE_USERINFO_URL: str = "https://openidconnect.googleapis.com/v1/userinfo"
     GOOGLE_SCOPES: str = "openid email profile"
 
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
+
 
 @lru_cache
 def get_settings() -> Settings:

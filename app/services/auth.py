@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 from datetime import UTC, datetime
 from ipaddress import ip_address as parse_ip_address
@@ -6,13 +7,15 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
+    create_password_reset_jwt,
+    decode_password_reset_jwt,
     generate_refresh_token,
     hash_password,
     hash_refresh_token,
@@ -439,3 +442,50 @@ def _bounded_header(value: str | None) -> str | None:
     if not value:
         return None
     return value[:_MAX_USER_AGENT_LENGTH]
+
+
+async def create_password_reset_token(db: AsyncSession, email: str) -> str | None:
+    result = await db.execute(select(User).where(User.email == email.lower()))
+    user = result.scalar_one_or_none()
+
+    if (
+        user is None
+        or user.provider != UserProvider.EMAIL
+        or user.password_hash is None
+    ):
+        return None
+
+    return create_password_reset_jwt(str(user.id), user.password_hash)
+
+
+async def reset_password(db: AsyncSession, raw_token: str, new_password: str) -> bool:
+    payload = decode_password_reset_jwt(raw_token)
+    if payload is None:
+        return False
+
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError):
+        return False
+
+    user = await get_user_by_id(db, user_id)
+    if user is None or user.password_hash is None:
+        return False
+
+    # Token embeds a fingerprint of the password hash at issuance time.
+    # Any prior password change renders outstanding tokens invalid automatically.
+    expected_phash = hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]
+    if payload.get("phash") != expected_phash:
+        return False
+
+    user.password_hash = hash_password(new_password)
+
+    # Revoke active sessions so stolen refresh tokens can't outlive a password reset.
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked.is_(False))
+        .values(revoked=True)
+    )
+
+    await db.commit()
+    return True
