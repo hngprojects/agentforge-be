@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response, status
 
 from app.api.deps import CurrentUser, DBSession
@@ -38,6 +40,8 @@ from app.services.auth import (
     set_refresh_token_cookie,
 )
 from app.services.email import send_password_reset_email, send_verification_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -176,7 +180,10 @@ async def resend_verification(
 ) -> MessageResponse:
     target = await get_verification_resend_target(db, body.email)
     if target is not None:
-        send_verification_email(target, create_verification_token(target))
+        try:
+            send_verification_email(target, create_verification_token(target))
+        except Exception:
+            logger.exception("Failed to send verification email")
     return MessageResponse(
         message="If this email exists and is unverified, a new link has been sent."
     )
