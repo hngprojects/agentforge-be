@@ -12,6 +12,7 @@ from app.schemas.auth import (
     LoginRequest,
     MessageResponse,
     RegisterRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
     TokenResponse,
     UserResponse,
@@ -26,6 +27,7 @@ from app.services.auth import (
     exchange_google_code,
     fetch_google_userinfo,
     get_user_by_email,
+    get_verification_resend_target,
     login_or_register_google_user,
     login_user,
     logout_user,
@@ -162,6 +164,22 @@ async def verify_email(
     user.email_verified = True
     await db.commit()
     return MessageResponse(message="Email verified successfully")
+
+
+@router.post(
+    "/resend-verification",
+    response_model=MessageResponse,
+    summary="Resend email verification link",
+)
+async def resend_verification(
+    body: ResendVerificationRequest, db: DBSession
+) -> MessageResponse:
+    target = await get_verification_resend_target(db, body.email)
+    if target is not None:
+        send_verification_email(target, create_verification_token(target))
+    return MessageResponse(
+        message="If this email exists and is unverified, a new link has been sent."
+    )
 
 
 @router.get(
