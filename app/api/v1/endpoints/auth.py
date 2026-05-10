@@ -13,6 +13,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.schemas.response import ResponseEnvelope
 from app.services.auth import (
     OAUTH_STATE_COOKIE,
     REFRESH_TOKEN_COOKIE,
@@ -37,11 +38,14 @@ router = APIRouter()
 
 @router.post(
     "/register",
-    response_model=MessageResponse,
+    response_model=ResponseEnvelope[MessageResponse],
     status_code=status.HTTP_201_CREATED,
     summary="Create a new account (email + password)",
 )
-async def register(body: RegisterRequest, db: DBSession) -> MessageResponse:
+async def register(
+    body: RegisterRequest,
+    db: DBSession,
+) -> ResponseEnvelope[MessageResponse]:
     user = await register_user(
         db,
         email=body.email,
@@ -52,14 +56,13 @@ async def register(body: RegisterRequest, db: DBSession) -> MessageResponse:
     verification_token = create_verification_token(user.email)
     send_verification_email(user.email, verification_token)
 
-    return MessageResponse(
-        message="Account created. Check your email to verify your address."
-    )
+    message = "Account created. Check your email to verify your address."
+    return ResponseEnvelope(message=message, data=MessageResponse(message=message))
 
 
 @router.post(
     "/login",
-    response_model=TokenResponse,
+    response_model=ResponseEnvelope[TokenResponse],
     response_model_exclude_none=True,
     summary="Log in and receive an access token plus refresh cookie",
 )
@@ -68,7 +71,7 @@ async def login(
     response: Response,
     body: LoginRequest,
     db: DBSession,
-) -> TokenResponse:
+) -> ResponseEnvelope[TokenResponse]:
     access_token, raw_refresh = await login_user(
         db,
         email=body.email,
@@ -76,12 +79,12 @@ async def login(
         request=request,
     )
     set_refresh_token_cookie(response, raw_refresh)
-    return TokenResponse(access_token=access_token)
+    return ResponseEnvelope(data=TokenResponse(access_token=access_token))
 
 
 @router.post(
     "/refresh",
-    response_model=TokenResponse,
+    response_model=ResponseEnvelope[TokenResponse],
     response_model_exclude_none=True,
     summary="Rotate the refresh cookie and receive a new access token",
 )
@@ -90,7 +93,7 @@ async def refresh(
     response: Response,
     db: DBSession,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE),
-) -> TokenResponse:
+) -> ResponseEnvelope[TokenResponse]:
     if refresh_token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -100,39 +103,40 @@ async def refresh(
         db, refresh_token, request
     )
     set_refresh_token_cookie(response, new_raw_refresh)
-    return TokenResponse(access_token=access_token)
+    return ResponseEnvelope(data=TokenResponse(access_token=access_token))
 
 
 @router.post(
     "/logout",
-    response_model=MessageResponse,
+    response_model=ResponseEnvelope[MessageResponse],
     summary="Revoke the refresh token cookie",
 )
 async def logout(
     response: Response,
     db: DBSession,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE),
-) -> MessageResponse:
+) -> ResponseEnvelope[MessageResponse]:
     if refresh_token is not None:
         await logout_user(db, refresh_token)
     clear_refresh_token_cookie(response)
-    return MessageResponse(message="Logged out successfully")
+    message = "Logged out successfully"
+    return ResponseEnvelope(message=message, data=MessageResponse(message=message))
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_me(current_user: CurrentUser):
-    return current_user
+@router.get("/me", response_model=ResponseEnvelope[UserResponse])
+async def get_me(current_user: CurrentUser) -> ResponseEnvelope[UserResponse]:
+    return ResponseEnvelope(data=current_user)
 
 
 @router.get(
     "/verify-email",
-    response_model=MessageResponse,
+    response_model=ResponseEnvelope[MessageResponse],
     summary="Verify email address via signed token",
 )
 async def verify_email(
     db: DBSession,
     token: str = Query(..., description="Signed JWT from the verification email"),
-) -> MessageResponse:
+) -> ResponseEnvelope[MessageResponse]:
     payload = decode_token(token)
     if payload.get("purpose") != "email_verify":
         raise HTTPException(
@@ -152,11 +156,13 @@ async def verify_email(
             detail="User not found",
         )
     if user.email_verified:
-        return MessageResponse(message="Email already verified")
+        message = "Email already verified"
+        return ResponseEnvelope(message=message, data=MessageResponse(message=message))
 
     user.email_verified = True
     await db.commit()
-    return MessageResponse(message="Email verified successfully")
+    message = "Email verified successfully"
+    return ResponseEnvelope(message=message, data=MessageResponse(message=message))
 
 
 @router.get(
@@ -173,7 +179,7 @@ async def google_start(response: Response) -> Response:
 
 @router.get(
     "/google/callback",
-    response_model=TokenResponse,
+    response_model=ResponseEnvelope[TokenResponse],
     response_model_exclude_none=True,
     summary="Handle Google OAuth callback",
 )
@@ -186,7 +192,7 @@ async def google_callback(
     error: str | None = Query(default=None),
     error_description: str | None = Query(default=None),
     state_cookie: str | None = Cookie(default=None, alias=OAUTH_STATE_COOKIE),
-) -> TokenResponse:
+) -> ResponseEnvelope[TokenResponse]:
     try:
         if error:
             message = "Google OAuth was cancelled"
@@ -231,7 +237,7 @@ async def google_callback(
         )
         set_refresh_token_cookie(response, raw_refresh)
         clear_oauth_state_cookie(response)
-        return TokenResponse(access_token=access_token)
+        return ResponseEnvelope(data=TokenResponse(access_token=access_token))
     except HTTPException:
         clear_oauth_state_cookie(response)
         raise
