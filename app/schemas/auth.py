@@ -59,6 +59,16 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
+
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
