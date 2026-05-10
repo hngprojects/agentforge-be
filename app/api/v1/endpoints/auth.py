@@ -10,6 +10,7 @@ from app.core.security import (
     decode_token,
 )
 from app.schemas.auth import (
+    ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
@@ -23,6 +24,7 @@ from app.services.auth import (
     OAUTH_STATE_COOKIE,
     REFRESH_TOKEN_COOKIE,
     build_google_auth_url,
+    change_password,
     clear_oauth_state_cookie,
     clear_refresh_token_cookie,
     create_password_reset_token,
@@ -133,6 +135,28 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: CurrentUser):
     return current_user
+
+
+@router.post(
+    "/change-password",
+    response_model=MessageResponse,
+    summary="Change password for authenticated email/password accounts",
+)
+async def change_password_endpoint(
+    body: ChangePasswordRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+) -> MessageResponse:
+    success = await change_password(
+        db, current_user, body.current_password, body.new_password
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect or account does not support"
+            " password changes",
+        )
+    return MessageResponse(message="Password changed successfully.")
 
 
 @router.get(
