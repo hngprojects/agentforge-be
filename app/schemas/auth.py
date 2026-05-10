@@ -69,6 +69,10 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
