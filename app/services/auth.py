@@ -443,6 +443,15 @@ def _bounded_header(value: str | None) -> str | None:
     return value[:_MAX_USER_AGENT_LENGTH]
 
 
+async def get_verification_resend_target(db: AsyncSession, email: str) -> str | None:
+    """Return the normalised email if eligible for re-verification, else None."""
+    normalised = email.lower()
+    user = await get_user_by_email(db, normalised)
+    if user is None or user.email_verified or user.provider != UserProvider.EMAIL:
+        return None
+    return normalised
+
+
 async def create_password_reset_token(db: AsyncSession, email: str) -> str | None:
     result = await db.execute(select(User).where(User.email == email.lower()))
     user = result.scalar_one_or_none()
