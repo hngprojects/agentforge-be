@@ -43,6 +43,10 @@ class Settings(BaseSettings):
 
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
 
+    BREVO_API_KEY: str
+    SMTP_FROM_NAME: str = "Agent Forge"
+    SMTP_FROM_EMAIL: str
+
 
 @lru_cache
 def get_settings() -> Settings:
