@@ -7,6 +7,8 @@ from app.core.security import (
     decode_token,
 )
 from app.schemas.auth import (
+    GoogleAuthResponse,
+    GoogleCallbackRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
@@ -14,10 +16,8 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services.auth import (
-    OAUTH_STATE_COOKIE,
     REFRESH_TOKEN_COOKIE,
     build_google_auth_url,
-    clear_oauth_state_cookie,
     clear_refresh_token_cookie,
     exchange_google_code,
     fetch_google_userinfo,
@@ -27,7 +27,6 @@ from app.services.auth import (
     logout_user,
     register_user,
     rotate_refresh_token,
-    set_oauth_state_cookie,
     set_refresh_token_cookie,
 )
 from app.services.email import send_verification_email
@@ -161,80 +160,47 @@ async def verify_email(
 
 @router.get(
     "/google",
-    summary="Start Google OAuth flow",
+    response_model=GoogleAuthResponse,
+    summary="Start Google OAuth flow — returns auth URL and state for the frontend",
 )
-async def google_start(response: Response) -> Response:
+async def google_start() -> GoogleAuthResponse:
     state = create_oauth_state_token()
-    set_oauth_state_cookie(response, state)
-    response.status_code = status.HTTP_307_TEMPORARY_REDIRECT
-    response.headers["Location"] = build_google_auth_url(state)
-    return response
+    auth_url = build_google_auth_url(state)
+    return GoogleAuthResponse(auth_url=auth_url, state=state)
 
 
-@router.get(
+@router.post(
     "/google/callback",
     response_model=TokenResponse,
     response_model_exclude_none=True,
-    summary="Handle Google OAuth callback",
+    summary="Complete Google OAuth — frontend forwards code and state",
 )
 async def google_callback(
     request: Request,
     response: Response,
     db: DBSession,
-    code: str | None = Query(default=None),
-    state: str | None = Query(default=None),
-    error: str | None = Query(default=None),
-    error_description: str | None = Query(default=None),
-    state_cookie: str | None = Cookie(default=None, alias=OAUTH_STATE_COOKIE),
+    body: GoogleCallbackRequest,
 ) -> TokenResponse:
-    try:
-        if error:
-            message = "Google OAuth was cancelled"
-            if error != "access_denied":
-                message = f"Google OAuth error: {error}"
-            if error_description:
-                message = f"{message}: {error_description}"
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=message,
-            )
-        if not code or not state or not state_cookie:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing OAuth parameters",
-            )
-        if state != state_cookie:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid OAuth state",
-            )
-        payload = decode_token(state)
-        if payload.get("purpose") != "oauth_state":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid OAuth state",
-            )
-
-        token_payload = await exchange_google_code(code)
-        google_access = token_payload.get("access_token")
-        if not google_access:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Google token response missing access_token",
-            )
-
-        profile = await fetch_google_userinfo(google_access)
-        access_token, raw_refresh, _ = await login_or_register_google_user(
-            db,
-            profile,
-            request,
+    payload = decode_token(body.state)
+    if payload.get("purpose") != "oauth_state":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state",
         )
-        set_refresh_token_cookie(response, raw_refresh)
-        clear_oauth_state_cookie(response)
-        return TokenResponse(access_token=access_token)
-    except HTTPException:
-        clear_oauth_state_cookie(response)
-        raise
-    except Exception:
-        clear_oauth_state_cookie(response)
-        raise
+
+    token_payload = await exchange_google_code(body.code)
+    google_access = token_payload.get("access_token")
+    if not google_access:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Google token response missing access_token",
+        )
+
+    profile = await fetch_google_userinfo(google_access)
+    access_token, raw_refresh, _ = await login_or_register_google_user(
+        db,
+        profile,
+        request,
+    )
+    set_refresh_token_cookie(response, raw_refresh)
+    return TokenResponse(access_token=access_token)
