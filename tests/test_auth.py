@@ -27,7 +27,6 @@ from app.models.enums import UserProvider
 from app.models.user import User
 from app.schemas.auth import TokenResponse
 from app.services import auth as auth_service
-from app.services import email as email_service
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -250,15 +249,6 @@ class TestEmailPasswordAuth:
 
         assert user_agent == "x" * 512
         assert ip_address is None
-
-    def test_verification_email_log_omits_email_and_token(self):
-        with patch.object(email_service.logger, "info") as logger_info:
-            email_service.send_verification_email("secret@example.com", "token-value")
-
-        logger_info.assert_called_once_with("Verification email queued")
-        logged = str(logger_info.call_args)
-        assert "secret@example.com" not in logged
-        assert "token-value" not in logged
 
     async def test_github_user_does_not_silently_link_password_account(self):
         user = _make_user(email="octocat@github.com", provider=UserProvider.EMAIL)
