@@ -6,13 +6,15 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
+    create_password_reset_jwt,
+    decode_password_reset_jwt,
     generate_refresh_token,
     hash_password,
     hash_refresh_token,
@@ -121,6 +123,49 @@ async def register_user(
     return user
 
 
+async def get_or_create_github_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    display_name: str | None,
+    avatar_url: str | None,
+    github_username: str | None,
+) -> User:
+    email = email.lower()
+    user = await get_user_by_email(db, email)
+    if user:
+        if user.provider != UserProvider.GITHUB:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "An account with this email already exists. "
+                    "Sign in with the existing provider and link GitHub "
+                    "from account settings."
+                ),
+            )
+        user.email_verified = True
+        if github_username:
+            user.github_username = github_username
+        if not user.avatar_url and avatar_url:
+            user.avatar_url = avatar_url
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    user = User(
+        email=email,
+        display_name=display_name,
+        avatar_url=avatar_url,
+        provider=UserProvider.GITHUB,
+        email_verified=True,
+        github_username=github_username,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def login_user(
     db: AsyncSession,
     email: str,
@@ -143,16 +188,24 @@ async def login_user(
             detail="Invalid email or password",
         )
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled",
-        )
-
     if not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Please verify your email before logging in",
+        )
+
+    return await issue_auth_tokens(db, user, request)
+
+
+async def issue_auth_tokens(
+    db: AsyncSession,
+    user: User,
+    request: Request,
+) -> tuple[str, str]:
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled",
         )
 
     access_token = create_access_token(str(user.id))
@@ -193,10 +246,16 @@ async def rotate_refresh_token(
 
     _validate_refresh_record(record)
 
-    record.revoked = True  # type: ignore
+    record.revoked = True  # type: ignore[union-attr]
 
     user = await get_user_by_id(db, record.user_id)  # type: ignore[union-attr]
-    if user is None or not user.is_active:
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
@@ -210,6 +269,7 @@ async def rotate_refresh_token(
         user_agent=user_agent,
         ip_address=ip_address,
     )
+    record.revoked = True  # type: ignore[union-attr]
     await db.commit()
 
     return access_token, raw_refresh
@@ -439,3 +499,50 @@ def _bounded_header(value: str | None) -> str | None:
     if not value:
         return None
     return value[:_MAX_USER_AGENT_LENGTH]
+
+
+async def create_password_reset_token(db: AsyncSession, email: str) -> str | None:
+    result = await db.execute(select(User).where(User.email == email.lower()))
+    user = result.scalar_one_or_none()
+
+    if (
+        user is None
+        or user.provider != UserProvider.EMAIL
+        or user.password_hash is None
+    ):
+        return None
+
+    return create_password_reset_jwt(str(user.id), user.password_hash)
+
+
+async def reset_password(db: AsyncSession, raw_token: str, new_password: str) -> bool:
+    # Phase 1: decode JWT structure only to extract user_id (no hash check yet).
+    payload = decode_password_reset_jwt(raw_token)
+    if payload is None:
+        return False
+
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError):
+        return False
+
+    user = await get_user_by_id(db, user_id)
+    if user is None or user.provider != UserProvider.EMAIL or not user.password_hash:
+        return False
+
+    # Phase 2: full validation — confirm the stored hash still matches the token.
+    # Any password change rotates the hash, instantly invalidating prior tokens.
+    if decode_password_reset_jwt(raw_token, user.password_hash) is None:
+        return False
+
+    user.password_hash = hash_password(new_password)
+
+    # Revoke active sessions so stolen refresh tokens can't outlive a password reset.
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked.is_(False))
+        .values(revoked=True)
+    )
+
+    await db.commit()
+    return True
