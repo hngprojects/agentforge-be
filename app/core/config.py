@@ -35,9 +35,7 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = {
-        "https://staging.agent-forge.hng14.com/auth/callback/google"
-    }
+    GOOGLE_REDIRECT_URI: str = "https://staging.agent-forge.hng14.com/auth/callback/google"
     GOOGLE_AUTH_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
     GOOGLE_USERINFO_URL: str = "https://openidconnect.googleapis.com/v1/userinfo"
@@ -45,9 +43,9 @@ class Settings(BaseSettings):
 
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
 
-    BREVO_API_KEY: str
+    BREVO_API_KEY: str = ""
     SMTP_FROM_NAME: str = "Agent Forge"
-    SMTP_FROM_EMAIL: str
+    SMTP_FROM_EMAIL: str = "noreply@example.com"
 
 
 @lru_cache
