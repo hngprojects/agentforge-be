@@ -2,7 +2,16 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import CurrentUser, DBSession
@@ -81,7 +90,9 @@ def _clear_github_oauth_state_cookie(response: Response) -> None:
     status_code=status.HTTP_201_CREATED,
     summary="Create a new account (email + password)",
 )
-async def register(body: RegisterRequest, db: DBSession) -> MessageResponse:
+async def register(
+    body: RegisterRequest, db: DBSession, background_tasks: BackgroundTasks
+) -> MessageResponse:
     user = await register_user(
         db,
         email=body.email,
@@ -90,7 +101,7 @@ async def register(body: RegisterRequest, db: DBSession) -> MessageResponse:
     )
 
     verification_token = create_verification_token(user.email)
-    send_verification_email(user.email, verification_token)
+    background_tasks.add_task(send_verification_email, user.email, verification_token)
 
     return MessageResponse(
         message="Account created. Check your email to verify your address."
