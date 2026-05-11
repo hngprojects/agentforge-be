@@ -86,6 +86,46 @@ def create_verification_token(email: str) -> str:
     )
 
 
-def create_oauth_state_token() -> str:
+def create_oauth_state_token(nonce: str | None = None) -> str:
     """Short-lived state token to prevent CSRF in OAuth flows."""
-    return create_token({"purpose": "oauth_state"}, timedelta(minutes=10))
+    payload = {"purpose": "oauth_state"}
+    if nonce is not None:
+        payload["nonce"] = nonce
+    return create_token(payload, timedelta(minutes=10))
+
+
+def create_password_reset_jwt(user_id: str, password_hash: str) -> str:
+    return create_token(
+        {"sub": user_id, "purpose": "password_reset", "password_hash": password_hash},
+        timedelta(minutes=settings.PASSWORD_RESET_TOKEN_TTL_MINUTES),
+    )
+
+
+def decode_password_reset_jwt(
+    token: str, current_password_hash: str | None = None
+) -> dict[str, Any] | None:
+    """Return payload for a valid password-reset JWT, else None.
+
+    When current_password_hash is supplied, also verifies that the hash embedded
+    in the token matches — rejecting any token issued before a password change.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            leeway=30,
+            options={"require": ["exp"]},
+        )
+        if payload.get("purpose") != "password_reset":
+            return None
+        if not payload.get("sub") or not payload.get("password_hash"):
+            return None
+        if (
+            current_password_hash is not None
+            and payload.get("password_hash") != current_password_hash
+        ):
+            return None
+        return payload
+    except jwt.InvalidTokenError:
+        return None

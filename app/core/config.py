@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import PostgresDsn
+from pydantic import PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,15 +25,23 @@ class Settings(BaseSettings):
     TRUSTED_PROXIES: str = ""
     COOKIE_SECURE: bool = False
 
+    # GitHub OAuth
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: SecretStr = SecretStr("")
+    GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/github/callback"
+
+    # Frontend (used in email links)
     FRONTEND_URL: str = "http://localhost:3000"
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str
+    GOOGLE_REDIRECT_URI: str = ""
     GOOGLE_AUTH_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
     GOOGLE_USERINFO_URL: str = "https://openidconnect.googleapis.com/v1/userinfo"
     GOOGLE_SCOPES: str = "openid email profile"
+
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
 
 
 @lru_cache
