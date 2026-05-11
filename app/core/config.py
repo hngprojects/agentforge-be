@@ -43,9 +43,9 @@ class Settings(BaseSettings):
 
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
 
-    BREVO_API_KEY: str
+    BREVO_API_KEY: str = ""
     SMTP_FROM_NAME: str = "Agent Forge"
-    SMTP_FROM_EMAIL: str
+    SMTP_FROM_EMAIL: str = "noreply@example.com"
 
 
 @lru_cache
