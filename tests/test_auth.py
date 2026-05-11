@@ -103,7 +103,7 @@ class TestEmailPasswordAuth:
         assert "refresh_token=raw-refresh-token" in set_cookie
         assert "HttpOnly" in set_cookie
         assert "samesite=strict" in set_cookie.lower()
-        assert "Path=/api/v1/auth" in set_cookie
+        assert "Path=/api" in set_cookie
         login_user.assert_awaited_once()
 
     async def test_register_sends_verification_without_printing_token(self, client):

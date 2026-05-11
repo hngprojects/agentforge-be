@@ -28,7 +28,7 @@ from app.models.user import User
 _DUMMY_PASSWORD_HASH = hash_password("not-the-password")
 _MAX_USER_AGENT_LENGTH = 512
 REFRESH_TOKEN_COOKIE = "refresh_token"
-REFRESH_TOKEN_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
+REFRESH_TOKEN_COOKIE_PATH = "/api"
 REFRESH_TOKEN_COOKIE_MAX_AGE = settings.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60
 
 
