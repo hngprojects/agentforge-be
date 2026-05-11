@@ -115,7 +115,7 @@ async def register_user(
         display_name=display_name,
         password_hash=hash_password(password),
         provider=UserProvider.EMAIL,
-        email_verified=False,
+        email_verified=True,  # TODO: change to send real email
     )
     db.add(user)
     await db.commit()
