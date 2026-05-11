@@ -35,7 +35,9 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = ""
+    GOOGLE_REDIRECT_URI: str = (
+        "https://staging.agent-forge.hng14.com/auth/callback/google"
+    )
     GOOGLE_AUTH_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
     GOOGLE_USERINFO_URL: str = "https://openidconnect.googleapis.com/v1/userinfo"
