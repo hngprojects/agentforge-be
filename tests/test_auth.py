@@ -286,7 +286,7 @@ class TestEmailPasswordAuth:
 
 
 class TestGoogleOAuth:
-    async def test_google_start_sets_state_cookie_and_redirects(self, client):
+    async def test_google_start_returns_auth_url_and_state(self, client):
         with (
             patch(
                 "app.api.v1.endpoints.auth.create_oauth_state_token",
@@ -299,12 +299,10 @@ class TestGoogleOAuth:
         ):
             resp = await client.get("/api/v1/auth/google")
 
-        assert resp.status_code == 307
-        assert (
-            resp.headers["location"] == "https://accounts.google.com/o/oauth2/v2/auth"
-        )
-        set_cookie = resp.headers["set-cookie"]
-        assert "oauth_state=state-token" in set_cookie
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["auth_url"] == "https://accounts.google.com/o/oauth2/v2/auth"
+        assert body["state"] == "state-token"
 
     async def test_google_callback_returns_token_and_sets_refresh_cookie(self, client):
         user = _make_user(email="google@example.com", email_verified=True)
@@ -334,26 +332,23 @@ class TestGoogleOAuth:
                 new=AsyncMock(return_value=("access-token", "refresh-token", user)),
             ),
         ):
-            resp = await client.get(
-                "/api/v1/auth/google/callback?code=abc&state=state-token",
-                headers={"cookie": "oauth_state=state-token"},
+            resp = await client.post(
+                "/api/v1/auth/google/callback",
+                json={"code": "abc", "state": "state-token"},
             )
 
         assert resp.status_code == 200
         assert resp.json() == {"access_token": "access-token", "token_type": "bearer"}
         set_cookies = resp.headers.get_list("set-cookie")
         assert any("refresh_token=refresh-token" in value for value in set_cookies)
-        assert any(
-            "oauth_state=" in value and "Max-Age=0" in value for value in set_cookies
+
+    async def test_google_callback_rejects_invalid_state(self, client):
+        resp = await client.post(
+            "/api/v1/auth/google/callback",
+            json={"code": "abc", "state": "not-a-valid-jwt"},
         )
 
-    async def test_google_callback_rejects_state_mismatch(self, client):
-        resp = await client.get(
-            "/api/v1/auth/google/callback?code=abc&state=state-token",
-            headers={"cookie": "oauth_state=other-state"},
-        )
-
-        assert resp.status_code == 400
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
