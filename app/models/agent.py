@@ -12,6 +12,8 @@ from app.models.enums import AgentCategory, AgentStatus, AgentVisibility
 if TYPE_CHECKING:
     from app.models.agent_skill import AgentSkill
     from app.models.user import User
+    from app.models.agent_clarification import AgentClarification
+    from app.models.agent_file import AgentFile
 
 
 class Agent(BaseModel):
@@ -48,6 +50,14 @@ class Agent(BaseModel):
     # relationships
     user: Mapped["User"] = relationship(back_populates="agents")
     agent_skills: Mapped[list["AgentSkill"]] = relationship(
+        back_populates="agent",
+        cascade="all, delete-orphan",
+    )
+    clarifications: Mapped[list["AgentClarification"]] = relationship(
+        back_populates="agent",
+        cascade="all, delete-orphan",
+    )
+    files: Mapped[list["AgentFile"]] = relationship(
         back_populates="agent",
         cascade="all, delete-orphan",
     )

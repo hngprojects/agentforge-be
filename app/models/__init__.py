@@ -4,6 +4,8 @@ from app.models.refresh_token import RefreshToken
 from app.models.agent import Agent
 from app.models.agent_skill import AgentSkill
 from app.models.skill import Skill
+from app.models.agent_clarification import AgentClarification
+from app.models.agent_file import AgentFile
 
 __all__ = [
     "Base",
@@ -13,4 +15,6 @@ __all__ = [
     "Skill",
     "AgentSkill",
     "RefreshToken",
+    "AgentClarification",
+    "AgentFile",
 ]
