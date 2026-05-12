@@ -45,6 +45,16 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
 
 
+class GoogleAuthResponse(BaseModel):
+    auth_url: str
+    state: str
+
+
+class GoogleCallbackRequest(BaseModel):
+    code: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: EmailStr

@@ -28,9 +28,8 @@ from app.models.user import User
 _DUMMY_PASSWORD_HASH = hash_password("not-the-password")
 _MAX_USER_AGENT_LENGTH = 512
 REFRESH_TOKEN_COOKIE = "refresh_token"
-REFRESH_TOKEN_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
+REFRESH_TOKEN_COOKIE_PATH = "/api"
 REFRESH_TOKEN_COOKIE_MAX_AGE = settings.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60
-OAUTH_STATE_COOKIE = "oauth_state"
 
 
 def set_refresh_token_cookie(response: Response, refresh_token: str) -> None:
@@ -48,28 +47,6 @@ def set_refresh_token_cookie(response: Response, refresh_token: str) -> None:
 def clear_refresh_token_cookie(response: Response) -> None:
     response.delete_cookie(
         key=REFRESH_TOKEN_COOKIE,
-        path=REFRESH_TOKEN_COOKIE_PATH,
-        secure=settings.COOKIE_SECURE,
-        httponly=True,
-        samesite="strict",
-    )
-
-
-def set_oauth_state_cookie(response: Response, state: str) -> None:
-    response.set_cookie(
-        key=OAUTH_STATE_COOKIE,
-        value=state,
-        max_age=600,
-        path=REFRESH_TOKEN_COOKIE_PATH,
-        secure=settings.COOKIE_SECURE,
-        httponly=True,
-        samesite="lax",
-    )
-
-
-def clear_oauth_state_cookie(response: Response) -> None:
-    response.delete_cookie(
-        key=OAUTH_STATE_COOKIE,
         path=REFRESH_TOKEN_COOKIE_PATH,
         secure=settings.COOKIE_SECURE,
         httponly=True,
