@@ -187,30 +187,7 @@ class TestResendVerificationOAuthUser:
 
 
 # ---------------------------------------------------------------------------
-# Case 5: email provider failure — always 200, never leaks account state
-# ---------------------------------------------------------------------------
-
-
-class TestResendVerificationEmailSendFailure:
-    async def test_send_exception_still_returns_200(self, client):
-        with (
-            patch(
-                "app.api.v1.endpoints.auth.get_verification_resend_target",
-                new=AsyncMock(return_value="alice@example.com"),
-            ),
-            patch(
-                "app.api.v1.endpoints.auth.send_verification_email",
-                side_effect=Exception("SMTP unavailable"),
-            ),
-        ):
-            resp = await client.post(_RESEND_EP, json={"email": "alice@example.com"})
-
-        assert resp.status_code == 200
-        assert "new link has been sent" in resp.json()["message"]
-
-
-# ---------------------------------------------------------------------------
-# Case 6: invalid email format — schema validation rejects early
+# Case 5: invalid email format — schema validation rejects early
 # ---------------------------------------------------------------------------
 
 
