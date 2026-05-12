@@ -212,7 +212,7 @@ def send_contact_admin_notification(
     """
     plain_body = (
         f"New Contact Form Submission\n\n"
-        f"Name: {full_name}\nEmail: {email}\nPhone: {phone or '—'}\n\nMessage:\n{message}"
+        f"Name: {full_name}\nEmail: {email}\nPhone: {phone or '—'}\n\nMessage:\n{message}"  # noqa: E501
     )
     send_email(
         to_email=settings.ADMIN_EMAIL,
