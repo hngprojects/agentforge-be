@@ -175,6 +175,61 @@ def _build_verification_email(email: str, verification_url: str) -> tuple[str, s
     return plain, html
 
 
+def send_email(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    plain_body: str,
+    to_name: str = "",
+) -> None:
+    """Generic reusable email sender via Brevo."""
+    configuration = Configuration()
+    configuration.api_key["api-key"] = settings.BREVO_API_KEY
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+        sib_api_v3_sdk.ApiClient(configuration)
+    )
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": to_email, "name": to_name}],
+        sender={"name": settings.SMTP_FROM_NAME, "email": settings.SMTP_FROM_EMAIL},
+        subject=subject,
+        html_content=html_body,
+        text_content=plain_body,
+    )
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+        logger.info("Email sent to %s | subject: %s", to_email, subject)
+    except ApiException:
+        logger.exception("Failed to send email to %s | subject: %s", to_email, subject)
+        raise
+
+
+def send_contact_admin_notification(
+    full_name: str, email: str, phone: str | None, message: str
+) -> None:
+    """Notify admin when a new contact form is submitted."""
+    html_body = f"""
+    <h2>New Contact Form Submission</h2>
+    <p><strong>Name:</strong> {full_name}</p>
+    <p><strong>Email:</strong> {email}</p>
+    <p><strong>Phone:</strong> {phone or "—"}</p>
+    <hr/>
+    <p><strong>Message:</strong></p>
+    <p>{message}</p>
+    """
+    plain_body = (
+        f"New Contact Form Submission\n\n"
+        f"Name: {full_name}\nEmail: {email}\nPhone: {phone or '—'}\n\nMessage:\n{message}"  # noqa: E501
+    )
+    send_email(
+        to_email=settings.ADMIN_EMAIL,
+        to_name="Admin",
+        subject=f"New contact message from {full_name}",
+        html_body=html_body,
+        plain_body=plain_body,
+    )
+
+
 def send_verification_email(email: str, token: str) -> None:
     verification_url = (
         f"{settings.FRONTEND_URL.rstrip('/')}/confirm-email?token={token}&email={email}"
