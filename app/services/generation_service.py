@@ -36,6 +36,7 @@ class GenerationService:
                 questions=questions,
             )
 
+        # TODO: implement AI generation logic for now its mock
         draft = self._mock_generate_agent(payload)
         files = self._assemble_files(draft)
 

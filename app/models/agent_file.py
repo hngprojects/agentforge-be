@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from app.models.agent import Agent
 
 
+# separate table to store generated files for agents
+# to support multiple files per agent and also to keep the agent table clean
 class AgentFile(BaseModel):
     __tablename__ = "agent_files"
 
