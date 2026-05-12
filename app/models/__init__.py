@@ -6,6 +6,7 @@ from app.models.agent_skill import AgentSkill
 from app.models.skill import Skill
 from app.models.agent_clarification import AgentClarification
 from app.models.agent_file import AgentFile
+from app.models.contact import ContactMessage
 
 __all__ = [
     "Base",
@@ -17,4 +18,5 @@ __all__ = [
     "RefreshToken",
     "AgentClarification",
     "AgentFile",
+    "ContactMessage",
 ]

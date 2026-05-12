@@ -47,11 +47,26 @@ class ClarificationService:
         return f"{description} {answers}".lower()
 
     def _mentions_target_user(self, text: str) -> bool:
-        keywords = ["student", "developer", "founder", "marketer", "team", "business", "user"]
+        keywords = [
+            "student",
+            "developer",
+            "founder",
+            "marketer",
+            "team",
+            "business",
+            "user",
+        ]
         return any(keyword in text for keyword in keywords)
 
     def _mentions_tone(self, text: str) -> bool:
-        keywords = ["friendly", "formal", "casual", "technical", "professional", "simple"]
+        keywords = [
+            "friendly",
+            "formal",
+            "casual",
+            "technical",
+            "professional",
+            "simple",
+        ]
         return any(keyword in text for keyword in keywords)
 
     def _mentions_domain(self, text: str) -> bool:

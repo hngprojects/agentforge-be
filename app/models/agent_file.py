@@ -16,9 +16,7 @@ if TYPE_CHECKING:
 class AgentFile(BaseModel):
     __tablename__ = "agent_files"
 
-    __table_args__ = (
-        UniqueConstraint("agent_id", "path", name="uq_agent_file_path"),
-    )
+    __table_args__ = (UniqueConstraint("agent_id", "path", name="uq_agent_file_path"),)
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -174,8 +174,4 @@ The agent works by understanding the user's goal, breaking it into steps, and gu
         return names.get(category, "AgentForge Assistant")
 
     def _slugify(self, text: str) -> str:
-        return (
-            text.lower()
-            .replace(" ", "-")
-            .replace("_", "-")
-        )
+        return text.lower().replace(" ", "-").replace("_", "-")
