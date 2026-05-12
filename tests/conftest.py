@@ -11,6 +11,8 @@ os.environ.setdefault(
     "GOOGLE_REDIRECT_URI",
     "http://test/api/v1/auth/google/callback",
 )
+os.environ.setdefault("BREVO_API_KEY", "test-brevo-api-key")
+os.environ.setdefault("SMTP_FROM_EMAIL", "noreply@example.test")
 
 import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

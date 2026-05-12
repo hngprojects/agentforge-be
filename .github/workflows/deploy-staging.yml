@@ -2,7 +2,7 @@ name: Deploy Staging
 
 on:
   push:
-    branches: [staging]
+    branches: [dev]
   workflow_dispatch:
 
 concurrency:
@@ -20,10 +20,15 @@ jobs:
     steps:
       - name: Deploy to staging server
         uses: appleboy/ssh-action@v1.2.5
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.AF_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.AF_GITHUB_CLIENT_SECRET }}
+          GITHUB_REDIRECT_URI: ${{ vars.AF_GITHUB_REDIRECT_URI }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI
           script_stop: true
           script: |
             set -e
@@ -40,11 +45,24 @@ jobs:
 
             # Pull latest code (safe sync)
             echo "=== Syncing code ==="
-            git fetch origin staging
-            git pull --rebase origin staging
+            git fetch origin dev
+            git pull --rebase origin dev
 
             # Write .env file
             echo "${{ secrets.STAGING_ENV_BASE64 }}" | base64 -d > .env
+
+            # Map GitHub Environment OAuth names to backend runtime names
+            if [ -z "${GITHUB_CLIENT_ID:-}" ] || [ -z "${GITHUB_CLIENT_SECRET:-}" ] || [ -z "${GITHUB_REDIRECT_URI:-}" ]; then
+              echo "❌ Missing GitHub OAuth deployment values."
+              exit 1
+            fi
+
+            {
+              printf '\n'
+              printf 'GITHUB_CLIENT_ID=%s\n' "$GITHUB_CLIENT_ID"
+              printf 'GITHUB_CLIENT_SECRET=%s\n' "$GITHUB_CLIENT_SECRET"
+              printf 'GITHUB_REDIRECT_URI=%s\n' "$GITHUB_REDIRECT_URI"
+            } >> .env
 
             # Install all dependency groups (parity with CI)
             echo "=== Installing dependencies ==="

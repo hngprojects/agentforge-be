@@ -21,7 +21,8 @@ def _build_verification_email(email: str, verification_url: str) -> tuple[str, s
     """Return (plain-text body, html body) for the verification email."""
     plain = (
         f"Hi,\n\n"
-        f"Thanks for signing up! Please verify your email address by visiting the link below:\n\n"
+        f"Thanks for signing up! Please verify your email address by visiting "
+        f"the link below:\n\n"
         f"{verification_url}\n\n"
         f"This link expires in {settings.VERIFICATION_TOKEN_TTL_HOURS} hour(s).\n\n"
         f"If you didn't create an account, you can safely ignore this email.\n\n"
@@ -35,8 +36,10 @@ def _build_verification_email(email: str, verification_url: str) -> tuple[str, s
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Verify your email</title>
 </head>
-<body style="margin:0;padding:0;background:#f0f4f4;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f4;padding:48px 0;">
+<body style="margin:0;padding:0;background:#f0f4f4;
+             font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="background:#f0f4f4;padding:48px 0;">
     <tr>
       <td align="center">
         <table width="520" cellpadding="0" cellspacing="0"
@@ -70,7 +73,9 @@ def _build_verification_email(email: str, verification_url: str) -> tuple[str, s
 
           <!-- Accent bar -->
           <tr>
-            <td style="background:#004744;height:3px;font-size:0;line-height:0;">&nbsp;</td>
+            <td style="background:#004744;height:3px;font-size:0;line-height:0;">
+              &nbsp;
+            </td>
           </tr>
 
           <!-- Body -->
@@ -86,7 +91,8 @@ def _build_verification_email(email: str, verification_url: str) -> tuple[str, s
               </p>
 
               <!-- Expiry notice -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:28px;">
+              <table cellpadding="0" cellspacing="0" width="100%"
+                     style="margin-bottom:28px;">
                 <tr>
                   <td style="background:#f0f9f8;border-left:3px solid #005f5a;
                               border-radius:0 6px 6px 0;padding:12px 16px;">
@@ -191,9 +197,9 @@ def send_verification_email(email: str, token: str) -> None:
 
     try:
         api_instance.send_transac_email(send_smtp_email)
-        logger.info("Verification email sent to %s via Brevo", email)
+        logger.info("Verification email sent via Brevo")
     except ApiException:
-        logger.exception("Failed to send verification email to %s", email)
+        logger.exception("Failed to send verification email via Brevo")
         raise
 
 

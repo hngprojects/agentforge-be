@@ -252,10 +252,21 @@ class TestEmailPasswordAuth:
         assert ip_address is None
 
     def test_verification_email_log_omits_email_and_token(self):
-        with patch.object(email_service.logger, "info") as logger_info:
+        brevo_client = MagicMock()
+
+        with (
+            patch.object(
+                email_service.sib_api_v3_sdk,
+                "TransactionalEmailsApi",
+                return_value=brevo_client,
+            ),
+            patch.object(email_service.sib_api_v3_sdk, "ApiClient"),
+            patch.object(email_service.logger, "info") as logger_info,
+        ):
             email_service.send_verification_email("secret@example.com", "token-value")
 
-        logger_info.assert_called_once_with("Verification email queued")
+        brevo_client.send_transac_email.assert_called_once()
+        logger_info.assert_called_once_with("Verification email sent via Brevo")
         logged = str(logger_info.call_args)
         assert "secret@example.com" not in logged
         assert "token-value" not in logged
