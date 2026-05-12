@@ -1,6 +1,9 @@
 import secrets
 from urllib.parse import urlencode
 
+import asyncio
+from app.core.limiter import limiter
+
 import httpx
 from fastapi import (
     APIRouter,
@@ -74,6 +77,10 @@ def _set_github_oauth_state_cookie(response: Response, nonce: str) -> None:
         samesite="lax",
     )
 
+def email_key(request: Request) -> str:
+    import json
+    body = request._body
+    return json.loads(body).get("email", "") if body else ""
 
 def _clear_github_oauth_state_cookie(response: Response) -> None:
     response.delete_cookie(
@@ -465,13 +472,18 @@ async def github_callback(
     response_model=MessageResponse,
     summary="Request a password reset link",
 )
+@limiter.limit("3/10 minutes")
+@limiter.limit("3/10 minutes", key_func=email_key)
 async def forgot_password(
-    body: ForgotPasswordRequest, db: DBSession
+    request: Request, body: ForgotPasswordRequest, db: DBSession
 ) -> MessageResponse:
     raw_token = await create_password_reset_token(db, body.email)
     if raw_token is not None:
+        #code goes here
         reset_url = f"{settings.FRONTEND_URL}/reset-password#{raw_token}"
         send_password_reset_email(body.email, reset_url)
+    else:
+        await asyncio.sleep(0.2)
     return MessageResponse(message="If this email exists, a reset link has been sent.")
 
 
