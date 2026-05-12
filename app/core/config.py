@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "Agent Forge"
     SMTP_FROM_EMAIL: str
 
+    ADMIN_EMAIL: str = "anvila.dev@gmail.com"
+
 
 @lru_cache
 def get_settings() -> Settings:
