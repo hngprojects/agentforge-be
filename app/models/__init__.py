@@ -4,6 +4,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.agent import Agent
 from app.models.agent_skill import AgentSkill
 from app.models.skill import Skill
+from app.models.contact import ContactMessage
 
 __all__ = [
     "Base",
@@ -13,4 +14,5 @@ __all__ = [
     "Skill",
     "AgentSkill",
     "RefreshToken",
+    "ContactMessage",
 ]
