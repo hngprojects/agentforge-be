@@ -478,6 +478,35 @@ def _bounded_header(value: str | None) -> str | None:
     return value[:_MAX_USER_AGENT_LENGTH]
 
 
+async def change_password(
+    db: AsyncSession,
+    user: User,
+    current_password: str,
+    new_password: str,
+) -> bool:
+    if user.provider != UserProvider.EMAIL or not user.password_hash:
+        return False
+    if not verify_password(current_password, user.password_hash):
+        return False
+    user.password_hash = hash_password(new_password)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked.is_(False))
+        .values(revoked=True)
+    )
+    await db.commit()
+    return True
+
+
+async def get_verification_resend_target(db: AsyncSession, email: str) -> str | None:
+    """Return the normalised email if eligible for re-verification, else None."""
+    normalised = email.lower()
+    user = await get_user_by_email(db, normalised)
+    if user is None or user.email_verified or user.provider != UserProvider.EMAIL:
+        return None
+    return normalised
+
+
 async def create_password_reset_token(db: AsyncSession, email: str) -> str | None:
     result = await db.execute(select(User).where(User.email == email.lower()))
     user = result.scalar_one_or_none()
